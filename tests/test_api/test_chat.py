@@ -17,8 +17,9 @@ def mock_router(mock_chat_response):
 @pytest.fixture
 def client(mock_router):
     with patch("modelmesh.api.v1.chat._router", mock_router):
-        with TestClient(create_app()) as c:
-            yield c
+        with patch("modelmesh.main.chat_module.set_router"):
+            with TestClient(create_app()) as c:
+                yield c
 
 
 def test_chat_completions_returns_200(client, mock_chat_response):
