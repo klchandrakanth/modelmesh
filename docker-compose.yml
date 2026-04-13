@@ -32,10 +32,7 @@ services:
       start_period: 15s
 
   admin-ui:
-    build:
-      context: ./admin-ui
-      args:
-        VITE_ADMIN_KEY: ${MODELMESH_GATEWAY_ADMIN_KEY:-dev-admin-key}
+    build: ./admin-ui
     image: modelmesh-admin:dev
     ports:
       - "3000:80"
