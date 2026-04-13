@@ -17,6 +17,7 @@ class ChatRequest:
     temperature: float = 0.7
     max_tokens: int | None = None
     stream: bool = False
+    tools: list | None = None  # OpenAI-compatible tool definitions for agent mode
 
 
 @dataclass
@@ -25,14 +26,18 @@ class ChatResponse:
     content: str
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    tool_calls: list | None = None  # populated when model calls tools
     id: str = field(default_factory=lambda: f"chatcmpl-{uuid.uuid4().hex[:8]}")
 
     @property
     def choices(self) -> list[dict]:
+        message: dict = {"role": "assistant", "content": self.content}
+        if self.tool_calls:
+            message["tool_calls"] = self.tool_calls
         return [{
             "index": 0,
-            "message": {"role": "assistant", "content": self.content},
-            "finish_reason": "stop",
+            "message": message,
+            "finish_reason": "tool_calls" if self.tool_calls else "stop",
         }]
 
     @property

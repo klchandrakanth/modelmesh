@@ -74,6 +74,9 @@ class ChatCompletionRequest(BaseModel):
     temperature: float = 0.7
     max_tokens: Optional[int] = None
     stream: bool = False
+    tools: Optional[list] = None        # agent mode: tool definitions
+    tool_choice: Optional[object] = None  # "auto" | "none" | {type, function}
+    stop: Optional[list[str] | str] = None  # accepted but not forwarded to all providers
 
 
 def _cost_for(model: str, prompt_tokens: int, completion_tokens: int) -> float:
@@ -110,6 +113,7 @@ async def chat_completions(req: ChatCompletionRequest):
         temperature=req.temperature,
         max_tokens=req.max_tokens,
         stream=req.stream,
+        tools=req.tools,
     )
 
     logger.info(
@@ -219,27 +223,23 @@ async def _stream_response(
     provider, request: ChatRequest, model: str, provider_name: str
 ):
     resp_id = f"chatcmpl-{uuid.uuid4().hex[:8]}"
-    start_chunk = {
-        "id": resp_id,
-        "model": model,
-        "choices": [{"delta": {"role": "assistant"}, "finish_reason": None}],
-    }
-    yield f"data: {json.dumps(start_chunk)}\n\n"
+    created = int(time.time())
+
+    def _chunk(delta: dict, finish_reason=None) -> str:
+        return "data: " + json.dumps({
+            "id": resp_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": model,
+            "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}],
+        }) + "\n\n"
+
+    yield _chunk({"role": "assistant", "content": ""})
     token_count = 0
     async for token in provider.stream_chat(request):
         token_count += 1
-        chunk = {
-            "id": resp_id,
-            "model": model,
-            "choices": [{"delta": {"content": token}, "finish_reason": None}],
-        }
-        yield f"data: {json.dumps(chunk)}\n\n"
-    end_chunk = {
-        "id": resp_id,
-        "model": model,
-        "choices": [{"delta": {}, "finish_reason": "stop"}],
-    }
-    yield f"data: {json.dumps(end_chunk)}\n\n"
+        yield _chunk({"content": token})
+    yield _chunk({}, finish_reason="stop")
     yield "data: [DONE]\n\n"
     record_tokens(
         provider=provider_name,

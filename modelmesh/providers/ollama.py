@@ -15,15 +15,19 @@ class OllamaProvider(BaseProvider):
             "stream": False,
             "options": {"temperature": request.temperature},
         }
+        if request.tools:
+            payload["tools"] = request.tools
         async with httpx.AsyncClient(timeout=120.0) as client:
             resp = await client.post(f"{self.base_url}/api/chat", json=payload)
             resp.raise_for_status()
             data = resp.json()
+        msg = data.get("message", {})
         return ChatResponse(
             model=data.get("model", request.model),
-            content=data["message"]["content"],
+            content=msg.get("content") or "",
             prompt_tokens=data.get("prompt_eval_count", 0),
             completion_tokens=data.get("eval_count", 0),
+            tool_calls=msg.get("tool_calls"),
         )
 
     async def stream_chat(self, request: ChatRequest) -> AsyncIterator[str]:
