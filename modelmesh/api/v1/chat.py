@@ -16,6 +16,7 @@ from modelmesh.observability.metrics import (
     record_tokens,
     record_cost,
 )
+from modelmesh.observability.request_log import get_request_log
 from modelmesh.providers.base import ChatRequest, Message
 from modelmesh.registry.model_registry import ModelRegistry
 from modelmesh.router.rule_router import RuleRouter
@@ -101,9 +102,21 @@ async def chat_completions(req: ChatCompletionRequest):
         extra={"model": resolved_model, "messages": len(req.messages)},
     )
 
+    # Extract preview from last user message for the request log
+    request_preview = next(
+        (m.content for m in reversed(req.messages) if m.role == "user"), ""
+    )
+    provider_name = type(provider).__name__.lower().replace("provider", "")
+
     if req.stream:
-        provider_name = type(provider).__name__.lower().replace("provider", "")
         record_request(provider=provider_name, model=resolved_model, status="stream")
+        get_request_log().append(
+            model=resolved_model,
+            provider=provider_name,
+            status="stream",
+            latency_ms=0,
+            request_preview=request_preview,
+        )
         return StreamingResponse(
             _stream_response(provider, chat_req, resolved_model, provider_name),
             media_type="text/event-stream",
@@ -125,19 +138,31 @@ async def chat_completions(req: ChatCompletionRequest):
         resp = await provider.chat(chat_req)
         status = "success"
     except Exception as exc:
-        provider_name = type(provider).__name__.lower().replace("provider", "")
+        elapsed_ms = (time.monotonic() - start) * 1000
         record_request(provider=provider_name, model=resolved_model, status="error")
-        observe_latency(provider=provider_name, model=resolved_model, seconds=time.monotonic() - start)
-        raise HTTPException(status_code=502, detail=str(exc))
+        observe_latency(
+            provider=provider_name,
+            model=resolved_model,
+            seconds=(time.monotonic() - start),
+        )
+        get_request_log().append(
+            model=resolved_model,
+            provider=provider_name,
+            status="error",
+            latency_ms=elapsed_ms,
+            request_preview=request_preview,
+        )
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     elapsed = time.monotonic() - start
-    provider_name = type(provider).__name__.lower().replace("provider", "")
+    elapsed_ms = elapsed * 1000
     record_request(provider=provider_name, model=resolved_model, status=status)
     observe_latency(provider=provider_name, model=resolved_model, seconds=elapsed)
 
     usage = resp.usage or {}
     prompt_tokens = usage.get("prompt_tokens", 0)
     completion_tokens = usage.get("completion_tokens", 0)
+    cost = 0.0
     if prompt_tokens or completion_tokens:
         record_tokens(
             provider=provider_name,
@@ -148,6 +173,17 @@ async def chat_completions(req: ChatCompletionRequest):
         cost = _cost_for(resolved_model, prompt_tokens, completion_tokens)
         if cost:
             record_cost(provider=provider_name, model=resolved_model, cost_usd=cost)
+
+    get_request_log().append(
+        model=resolved_model,
+        provider=provider_name,
+        status=status,
+        latency_ms=elapsed_ms,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        cost_usd=cost,
+        request_preview=request_preview,
+    )
 
     result = {
         "id": resp.id,
