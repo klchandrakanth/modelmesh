@@ -36,20 +36,20 @@ def router(registry, mock_ollama, mock_openai):
 
 @pytest.mark.asyncio
 async def test_explicit_model_resolves_to_provider(router, mock_ollama):
-    provider, model = await router.resolve("llama3")
+    provider, model = await router.resolve("llama3.2:3b")
     assert provider is mock_ollama
-    assert model == "llama3"
+    assert model == "llama3.2:3b"
 
 
 @pytest.mark.asyncio
 async def test_explicit_openai_model(router, mock_openai):
-    provider, model = await router.resolve("gpt-4o")
+    provider, _ = await router.resolve("gpt-4o")
     assert provider is mock_openai
 
 
 @pytest.mark.asyncio
 async def test_auto_resolves_to_default(router, mock_ollama):
-    provider, model = await router.resolve("auto")
+    provider, _ = await router.resolve("auto")
     assert provider is mock_ollama   # local_first=True, ollama healthy
 
 
@@ -58,12 +58,12 @@ async def test_auto_falls_back_when_ollama_down(registry, mock_ollama):
     mock_anthropic = AsyncMock(spec=BaseProvider)
     mock_anthropic.health_check.return_value = True
     mock_ollama.health_check.return_value = False
-    router = RuleRouter(
+    local_router = RuleRouter(
         registry=registry,
         providers={"ollama": mock_ollama, "anthropic": mock_anthropic},
         default_local_first=True,
     )
-    provider, model = await router.resolve("auto")
+    provider, _ = await local_router.resolve("auto")
     assert provider is mock_anthropic
 
 

@@ -1,0 +1,16 @@
+# config/keys.yaml
+# API keys for ModelMesh gateway.
+# Hashed with bcrypt. To generate a hash:
+#   python -c "from passlib.hash import bcrypt; print(bcrypt.hash('your-key-here'))"
+#
+# Enable auth: set MODELMESH_ENABLE_AUTH=true
+#
+# The dev-key below hashes the plaintext "dev-secret-local" — change before production.
+
+keys:
+  - id: dev-key-1
+    name: "Local Dev"
+    hashed: "$2b$12$P7tAuxNzfs7vOKJCKGthPe.MSOjCapHPkwlF1Rt2cQl8ygIlospri"  # "dev-secret-local"
+    rate_limit_per_minute: 120
+    routing_policy:
+      local_first: true

@@ -8,17 +8,9 @@ models:
     provider: openai
     context_window: 128000
     cost_per_1k_tokens: 0.00015
-  llama3:
+  llama3.2:3b:
     provider: ollama
     context_window: 8192
-    cost_per_1k_tokens: 0.0
-  deepseek-coder:
-    provider: ollama
-    context_window: 16384
-    cost_per_1k_tokens: 0.0
-  phi3-mini:
-    provider: ollama
-    context_window: 4096
     cost_per_1k_tokens: 0.0
   claude-opus-4-5:
     provider: anthropic
@@ -34,5 +26,5 @@ models:
     cost_per_1k_tokens: 0.00025
 
 defaults:
-  chat: llama3
+  chat: llama3.2:3b
   fallback: claude-sonnet-4-5

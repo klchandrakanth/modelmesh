@@ -7,10 +7,18 @@ services:
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY:-}
       - MODELMESH_OLLAMA_BASE_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
       - MODELMESH_LOG_LEVEL=INFO
+      - MODELMESH_ENABLE_METRICS=true
+      - MODELMESH_ENABLE_AUTH=${MODELMESH_ENABLE_AUTH:-false}
+      - MODELMESH_ENABLE_CACHE=${MODELMESH_ENABLE_CACHE:-false}
+      - MODELMESH_REDIS_URL=redis://redis:6379
     volumes:
       - ./config:/app/config:ro
+    depends_on:
+      redis:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/v1/models"]
@@ -18,8 +26,21 @@ services:
       timeout: 5s
       retries: 3
 
-  # Optional: uncomment to enable Redis caching (Phase 2)
-  # redis:
-  #   image: redis:7-alpine
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # Optional: Prometheus scraping (uncomment to enable)
+  # prometheus:
+  #   image: prom/prometheus:latest
   #   ports:
-  #     - "6379:6379"
+  #     - "9090:9090"
+  #   volumes:
+  #     - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro

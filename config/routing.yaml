@@ -1,36 +1,27 @@
 # config/routing.yaml
-routing:
-  local_first: true
-  intent_map:
-    code:
-      primary: deepseek-coder
-      fallback: gpt-4o
-    summarize:
-      primary: llama3
-      fallback: gpt-4o-mini
-    factual:
-      primary: llama3
-      fallback: gpt-4o-mini
-    fast:
-      primary: phi3-mini
-      fallback: gpt-4o-mini
+# Routing policy overrides for semantic (intent-based) routing.
+# These supplement the default local-first logic in RuleRouter.
 
-  intent_labels:
-    code:
-      - "Write a Python function"
-      - "Fix this bug"
-      - "Explain this code"
-      - "Implement a REST endpoint"
-      - "Debug this error"
-    summarize:
-      - "Summarize this document"
-      - "Give me a TLDR"
-      - "Condense this text"
-    factual:
-      - "What is the capital of France"
-      - "Define machine learning"
-      - "How does X work"
-    fast:
-      - "Yes or no"
-      - "What time is it"
-      - "Complete this sentence"
+intent_map:
+  code:
+    primary: llama3.2:3b
+    fallback: claude-haiku-4-5
+  summarize:
+    primary: llama3.2:3b
+    fallback: claude-haiku-4-5
+  creative:
+    primary: claude-sonnet-4-5
+    fallback: gpt-4o
+  factual:
+    primary: llama3.2:3b
+    fallback: claude-haiku-4-5
+  long_form:
+    primary: claude-sonnet-4-5
+    fallback: gpt-4o
+  fast:
+    primary: llama3.2:3b
+    fallback: claude-haiku-4-5
+
+policies:
+  local_first: true
+  max_cost_per_request: 0.10

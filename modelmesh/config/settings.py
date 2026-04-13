@@ -27,4 +27,19 @@ class Settings(BaseSettings):
     # Bootstrap admin key
     gateway_admin_key: str = "dev-admin-key"
 
+    # Auth
+    keys_config_path: Path = Path("config/keys.yaml")
+    enable_auth: bool = False  # Set True to require X-API-Key on all requests
+
+    # Redis cache
+    redis_url: str = "redis://localhost:6379"
+    enable_cache: bool = False  # Set True to enable Redis prompt caching
+    cache_ttl: int = 3600  # seconds
+
+    # Observability
+    enable_metrics: bool = True  # Prometheus /metrics endpoint
+
+    # Semantic routing
+    enable_semantic_routing: bool = False  # Requires sentence-transformers extra
+
 settings = Settings()

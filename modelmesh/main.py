@@ -1,14 +1,17 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 
 from modelmesh.config.settings import settings
 from modelmesh.observability.logging import configure_logging, get_logger
+from modelmesh.observability.metrics import get_metrics_output
 from modelmesh.registry.model_registry import ModelRegistry
 from modelmesh.providers.ollama import OllamaProvider
 from modelmesh.providers.openai_provider import OpenAIProvider
 from modelmesh.providers.anthropic_provider import AnthropicProvider
 from modelmesh.router.rule_router import RuleRouter
+from modelmesh.auth.api_keys import ApiKeyManager, configure_auth
 from modelmesh.api.v1 import chat as chat_module
 from modelmesh.api.v1 import models as models_module
 from modelmesh.api.v1.chat import router as chat_router
@@ -24,36 +27,80 @@ def _build_providers(s) -> dict:
         providers["openai"] = OpenAIProvider(api_key=s.openai_api_key)
     if s.anthropic_api_key:
         providers["anthropic"] = AnthropicProvider(api_key=s.anthropic_api_key)
+    if s.huggingface_api_key:
+        from modelmesh.providers.huggingface_provider import HuggingFaceProvider
+        providers["huggingface"] = HuggingFaceProvider(api_key=s.huggingface_api_key)
     return providers
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_logging(settings.log_level)
+
+    # Registry + providers
     registry = ModelRegistry(settings.models_config_path)
     providers = _build_providers(settings)
 
     ollama_up = await providers["ollama"].health_check()
-    logger.info("startup", extra={"ollama_available": ollama_up, "providers": list(providers.keys())})
+    logger.info(
+        "startup",
+        extra={
+            "ollama_available": ollama_up,
+            "providers": list(providers.keys()),
+        },
+    )
 
-    router = RuleRouter(registry=registry, providers=providers, default_local_first=True)
+    # Base rule router
+    rule_router = RuleRouter(registry=registry, providers=providers, default_local_first=True)
 
-    chat_module.set_router(router)
+    # Semantic router (optional — requires sentence-transformers extra)
+    active_router = rule_router
+    if settings.enable_semantic_routing:
+        try:
+            from modelmesh.router.semantic_router import IntentClassifier, SemanticRouter
+            classifier = IntentClassifier()
+            active_router = SemanticRouter(rule_router=rule_router, classifier=classifier)
+            logger.info("Semantic routing enabled")
+        except ImportError:
+            logger.warning(
+                "enable_semantic_routing=True but sentence-transformers not installed; "
+                "falling back to rule-based routing"
+            )
+
+    # Auth
+    key_manager = ApiKeyManager(settings.keys_config_path)
+    configure_auth(key_manager, enabled=settings.enable_auth)
+    logger.info("auth", extra={"enabled": settings.enable_auth})
+
+    # Redis cache (optional)
+    cache = None
+    if settings.enable_cache:
+        from modelmesh.cache.redis_cache import RedisCache
+        cache = RedisCache(url=settings.redis_url, ttl=settings.cache_ttl)
+        await cache.connect()
+
+    # Wire API modules
+    chat_module.set_router(active_router)
+    chat_module.set_cache(cache)
     models_module.set_registry(registry)
 
-    # Wire embeddings if the module exists (added in Task 12)
+    # Wire embeddings if available
     try:
         from modelmesh.api.v1 import embeddings as embeddings_module
-        embeddings_module.set_router(router)
+        embeddings_module.set_router(rule_router)
     except ImportError:
         pass
 
     yield
+
+    # Cleanup
+    if cache is not None:
+        await cache.close()
     logger.info("shutdown")
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="ModelMesh", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="ModelMesh", version="0.2.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:3000"],
@@ -63,12 +110,19 @@ def create_app() -> FastAPI:
     app.include_router(chat_router)
     app.include_router(models_router)
 
-    # Include embeddings router if module exists
+    # Embeddings router (optional)
     try:
         from modelmesh.api.v1.embeddings import router as embeddings_router
         app.include_router(embeddings_router)
     except ImportError:
         pass
+
+    # Prometheus metrics endpoint
+    if settings.enable_metrics:
+        @app.get("/metrics", include_in_schema=False)
+        async def metrics_endpoint():
+            output, content_type = get_metrics_output()
+            return Response(content=output, media_type=content_type)
 
     return app
 
