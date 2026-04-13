@@ -6,6 +6,7 @@ Two dependencies:
 """
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -16,7 +17,15 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 _bearer = HTTPBearer(auto_error=False)
 
-_JWT_SECRET: str = os.environ.get("JWT_SECRET") or secrets.token_hex(32)
+_logger = logging.getLogger(__name__)
+
+_jwt_secret_env = os.environ.get("JWT_SECRET")
+if not _jwt_secret_env:
+    _logger.warning(
+        "JWT_SECRET env var not set — using a random secret. "
+        "All tokens will be invalidated on restart."
+    )
+_JWT_SECRET: str = _jwt_secret_env or secrets.token_hex(32)
 _ALGORITHM = "HS256"
 _EXPIRY_HOURS = 8
 

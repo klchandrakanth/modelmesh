@@ -33,9 +33,9 @@ async def admin_models():
         if entry is None:
             continue
         provider_healthy = None
-        if _router and entry.provider in _router._providers:
+        if _router and entry.provider in _router.providers:
             try:
-                provider_healthy = await _router._providers[entry.provider].health_check()
+                provider_healthy = await _router.providers[entry.provider].health_check()
             except Exception:
                 provider_healthy = False
         models.append(

@@ -21,7 +21,7 @@ async def admin_health():
         return {"providers": {}}
 
     results = {}
-    for name, provider in _router._providers.items():
+    for name, provider in _router.providers.items():
         try:
             healthy = await provider.health_check()
         except Exception as exc:

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 from passlib.context import CryptContext
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from modelmesh.api.admin.auth import create_token, require_jwt_any
 from modelmesh.db.connection import get_db
@@ -22,7 +22,7 @@ class LoginRequest(BaseModel):
 
 class ChangePasswordRequest(BaseModel):
     current_password: str
-    new_password: str
+    new_password: str = Field(min_length=12)
 
 
 @router.post("/login")

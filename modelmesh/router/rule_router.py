@@ -13,6 +13,10 @@ class RuleRouter:
         self._providers = providers
         self._local_first = default_local_first
 
+    @property
+    def providers(self):
+        return self._providers
+
     async def resolve(self, model_name: str) -> tuple[BaseProvider, str]:
         """Return (provider, resolved_model_name)."""
         if model_name in ("auto", None, ""):

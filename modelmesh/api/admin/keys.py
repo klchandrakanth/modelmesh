@@ -5,6 +5,7 @@ DELETE /admin/keys/{key_id} — revoke a key.
 """
 from __future__ import annotations
 
+import asyncio
 import secrets
 from pathlib import Path
 
@@ -24,27 +25,35 @@ class CreateKeyRequest(BaseModel):
     rate_limit_per_minute: int = 60
 
 
-def _load_keys() -> list[dict]:
+async def _load_keys() -> list[dict]:
     path = settings.keys_config_path
-    if not path.exists():
-        return []
-    data = yaml.safe_load(path.read_text()) or {}
-    return data.get("keys", [])
+
+    def _read():
+        if not path.exists():
+            return []
+        data = yaml.safe_load(path.read_text()) or {}
+        return data.get("keys", [])
+
+    return await asyncio.to_thread(_read)
 
 
-def _save_keys(keys: list[dict]) -> None:
+async def _save_keys(keys: list[dict]) -> None:
     path = settings.keys_config_path
-    path.parent.mkdir(parents=True, exist_ok=True)
-    existing = yaml.safe_load(path.read_text()) if path.exists() else {}
-    if not isinstance(existing, dict):
-        existing = {}
-    existing["keys"] = keys
-    path.write_text(yaml.dump(existing, default_flow_style=False, allow_unicode=True))
+
+    def _write():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        existing = yaml.safe_load(path.read_text()) if path.exists() else {}
+        if not isinstance(existing, dict):
+            existing = {}
+        existing["keys"] = keys
+        path.write_text(yaml.dump(existing, default_flow_style=False, allow_unicode=True))
+
+    await asyncio.to_thread(_write)
 
 
 @router.get("/keys", dependencies=[Depends(require_jwt)])
 async def list_keys():
-    keys = _load_keys()
+    keys = await _load_keys()
     return {
         "keys": [
             {
@@ -64,7 +73,7 @@ async def create_key(body: CreateKeyRequest):
     hashed = bcrypt.hashpw(raw.encode(), bcrypt.gensalt()).decode()
     key_id = f"key-{secrets.token_hex(4)}"
 
-    keys = _load_keys()
+    keys = await _load_keys()
     keys.append(
         {
             "id": key_id,
@@ -73,7 +82,7 @@ async def create_key(body: CreateKeyRequest):
             "rate_limit_per_minute": body.rate_limit_per_minute,
         }
     )
-    _save_keys(keys)
+    await _save_keys(keys)
 
     return {
         "id": key_id,
@@ -86,9 +95,9 @@ async def create_key(body: CreateKeyRequest):
 
 @router.delete("/keys/{key_id}", dependencies=[Depends(require_jwt)])
 async def revoke_key(key_id: str):
-    keys = _load_keys()
+    keys = await _load_keys()
     updated = [k for k in keys if k["id"] != key_id]
     if len(updated) == len(keys):
         raise HTTPException(status_code=404, detail=f"Key {key_id!r} not found")
-    _save_keys(updated)
+    await _save_keys(updated)
     return {"deleted": key_id}
