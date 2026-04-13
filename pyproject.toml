@@ -20,6 +20,8 @@ dependencies = [
     "prometheus-client>=0.20.0",
     "passlib[bcrypt]>=1.7.4",
     "redis[asyncio]>=5.0.0",
+    "asyncpg>=0.29.0",
+    "pyjwt>=2.8.0",
 ]
 
 [project.optional-dependencies]
