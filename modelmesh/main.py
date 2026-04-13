@@ -7,6 +7,7 @@ from modelmesh.observability.logging import configure_logging, get_logger
 from modelmesh.registry.model_registry import ModelRegistry
 from modelmesh.providers.ollama import OllamaProvider
 from modelmesh.providers.openai_provider import OpenAIProvider
+from modelmesh.providers.anthropic_provider import AnthropicProvider
 from modelmesh.router.rule_router import RuleRouter
 from modelmesh.api.v1 import chat as chat_module
 from modelmesh.api.v1 import models as models_module
@@ -21,6 +22,8 @@ def _build_providers(s) -> dict:
     providers["ollama"] = OllamaProvider(base_url=s.ollama_base_url)
     if s.openai_api_key:
         providers["openai"] = OpenAIProvider(api_key=s.openai_api_key)
+    if s.anthropic_api_key:
+        providers["anthropic"] = AnthropicProvider(api_key=s.anthropic_api_key)
     return providers
 
 

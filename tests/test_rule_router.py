@@ -54,15 +54,17 @@ async def test_auto_resolves_to_default(router, mock_ollama):
 
 
 @pytest.mark.asyncio
-async def test_auto_falls_back_when_ollama_down(registry, mock_ollama, mock_openai):
+async def test_auto_falls_back_when_ollama_down(registry, mock_ollama):
+    mock_anthropic = AsyncMock(spec=BaseProvider)
+    mock_anthropic.health_check.return_value = True
     mock_ollama.health_check.return_value = False
     router = RuleRouter(
         registry=registry,
-        providers={"ollama": mock_ollama, "openai": mock_openai},
+        providers={"ollama": mock_ollama, "anthropic": mock_anthropic},
         default_local_first=True,
     )
     provider, model = await router.resolve("auto")
-    assert provider is mock_openai
+    assert provider is mock_anthropic
 
 
 @pytest.mark.asyncio
