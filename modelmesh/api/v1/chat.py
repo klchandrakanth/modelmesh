@@ -207,6 +207,7 @@ async def chat_completions(req: ChatCompletionRequest):
     result = {
         "id": resp.id,
         "object": "chat.completion",
+        "created": int(time.time()),
         "model": resp.model,
         "choices": resp.choices,
         "usage": resp.usage,

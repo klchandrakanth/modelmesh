@@ -1,7 +1,9 @@
 from contextlib import asynccontextmanager
+import time
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from modelmesh.config.settings import settings
 from modelmesh.observability.logging import configure_logging, get_logger
@@ -137,8 +139,41 @@ async def lifespan(app: FastAPI):
     logger.info("shutdown")
 
 
+class RequestLogMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        body_bytes = b""
+        if request.url.path.startswith("/v1/"):
+            body_bytes = await request.body()
+
+        start = time.monotonic()
+        response = await call_next(request)
+        elapsed_ms = (time.monotonic() - start) * 1000
+
+        extra: dict = {
+            "method": request.method,
+            "path": request.url.path,
+            "status": response.status_code,
+            "latency_ms": round(elapsed_ms, 1),
+            "client": request.client.host if request.client else "unknown",
+            "user_agent": request.headers.get("user-agent", ""),
+        }
+        if body_bytes:
+            try:
+                import json as _json
+                body_preview = _json.loads(body_bytes)
+                extra["model"] = body_preview.get("model")
+                extra["stream"] = body_preview.get("stream")
+                extra["msg_count"] = len(body_preview.get("messages", []))
+            except Exception:
+                extra["body_raw"] = body_bytes[:200].decode(errors="replace")
+
+        logger.info("http_request", extra=extra)
+        return response
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="ModelMesh", version="0.2.0", lifespan=lifespan)
+    app.add_middleware(RequestLogMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:3000", "http://localhost:5173"],
