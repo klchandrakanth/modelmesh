@@ -65,6 +65,8 @@ async def lifespan(app: FastAPI):
 
     # Registry + providers
     registry = ModelRegistry(settings.models_config_path)
+    async with db_pool.acquire() as _conn:
+        await registry.load_from_db(_conn)
     providers = _build_providers(settings)
 
     ollama_up = await providers["ollama"].health_check()
