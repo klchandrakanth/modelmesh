@@ -48,9 +48,24 @@ def set_registry(r: ModelRegistry) -> None:
     _registry = r
 
 
+def _normalize_content(content: str | list) -> str:
+    """Accept both plain strings and OpenAI content-block arrays."""
+    if isinstance(content, str):
+        return content
+    return " ".join(
+        block.get("text", "")
+        for block in content
+        if isinstance(block, dict) and block.get("type") == "text"
+    )
+
+
 class ChatMessage(BaseModel):
     role: str
-    content: str
+    content: str | list  # str for normal requests; list for multimodal/Continue-style blocks
+
+    @property
+    def text(self) -> str:
+        return _normalize_content(self.content)
 
 
 class ChatCompletionRequest(BaseModel):
@@ -91,7 +106,7 @@ async def chat_completions(req: ChatCompletionRequest):
 
     chat_req = ChatRequest(
         model=resolved_model,
-        messages=[Message(role=m.role, content=m.content) for m in req.messages],
+        messages=[Message(role=m.role, content=m.text) for m in req.messages],
         temperature=req.temperature,
         max_tokens=req.max_tokens,
         stream=req.stream,
@@ -104,7 +119,7 @@ async def chat_completions(req: ChatCompletionRequest):
 
     # Extract preview from last user message for the request log
     request_preview = next(
-        (m.content for m in reversed(req.messages) if m.role == "user"), ""
+        (m.text for m in reversed(req.messages) if m.role == "user"), ""
     )
     provider_name = type(provider).__name__.lower().replace("provider", "")
 
