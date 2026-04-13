@@ -10,6 +10,9 @@ from modelmesh.db.connection import get_db
 
 router = APIRouter(prefix="/admin/auth", tags=["auth"])
 _pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Pre-computed dummy hash for constant-time verification when user not found
+# Prevents timing attacks that could reveal valid usernames
+_DUMMY_HASH: str = _pwd.hash("dummy-this-never-matches")
 
 
 class LoginRequest(BaseModel):
@@ -29,7 +32,7 @@ async def login(body: LoginRequest, db=Depends(get_db)):
         body.username,
     )
     # Use constant-time comparison even on missing user to prevent timing attacks
-    stored_hash = row["password_hash"] if row else "$2b$12$invalidhashpadding000000000000000"
+    stored_hash = row["password_hash"] if row else _DUMMY_HASH
     valid = _pwd.verify(body.password, stored_hash)
     if not row or not valid:
         raise HTTPException(status_code=401, detail="Invalid credentials")
