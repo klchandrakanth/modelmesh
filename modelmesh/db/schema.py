@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS models (
     name           TEXT PRIMARY KEY,
     provider       TEXT NOT NULL,
     context_window INTEGER NOT NULL DEFAULT 4096,
-    cost_per_1k    REAL NOT NULL DEFAULT 0.0,
+    cost_per_1k    NUMERIC(12,6) NOT NULL DEFAULT 0.0,
     is_default     BOOLEAN NOT NULL DEFAULT FALSE,
     is_fallback    BOOLEAN NOT NULL DEFAULT FALSE,
     enabled        BOOLEAN NOT NULL DEFAULT TRUE,
@@ -39,8 +39,9 @@ async def init_schema(pool: asyncpg.Pool, models_yaml: Path) -> None:
     async with pool.acquire() as conn:
         await conn.execute(_CREATE_USERS)
         await conn.execute(_CREATE_MODELS)
-        await _seed_admin(conn)
-        await _seed_models(conn, models_yaml)
+        async with conn.transaction():
+            await _seed_admin(conn)
+            await _seed_models(conn, models_yaml)
 
 
 async def _seed_admin(conn: asyncpg.Connection) -> None:
@@ -63,13 +64,16 @@ async def _seed_models(conn: asyncpg.Connection, models_yaml: Path) -> None:
     default_chat = defaults.get("chat", "")
     default_fallback = defaults.get("fallback", "")
     for name, attrs in data.get("models", {}).items():
+        provider = attrs.get("provider")
+        if not provider:
+            raise ValueError(f"Model '{name}' in models.yaml is missing required 'provider' key")
         await conn.execute(
             """
             INSERT INTO models (name, provider, context_window, cost_per_1k, is_default, is_fallback)
             VALUES ($1, $2, $3, $4, $5, $6)
             """,
             name,
-            attrs["provider"],
+            provider,
             attrs.get("context_window", 4096),
             float(attrs.get("cost_per_1k_tokens", 0.0)),
             name == default_chat,

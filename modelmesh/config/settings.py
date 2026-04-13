@@ -42,4 +42,9 @@ class Settings(BaseSettings):
     # Semantic routing
     enable_semantic_routing: bool = False  # Requires sentence-transformers extra
 
+    database_url: str = Field(
+        default="postgresql+asyncpg://modelmesh:devpassword@localhost/modelmesh",
+        validation_alias="DATABASE_URL",
+    )
+
 settings = Settings()

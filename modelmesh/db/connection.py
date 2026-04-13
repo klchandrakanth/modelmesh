@@ -1,6 +1,8 @@
 """asyncpg connection pool + FastAPI dependency."""
 from __future__ import annotations
 
+from typing import AsyncGenerator
+
 import asyncpg
 from fastapi import Request
 
@@ -11,7 +13,7 @@ async def create_pool(database_url: str) -> asyncpg.Pool:
     return await asyncpg.create_pool(url, min_size=2, max_size=10)
 
 
-async def get_db(request: Request):
+async def get_db(request: Request) -> AsyncGenerator[asyncpg.Connection, None]:
     """FastAPI dependency — yields a connection from the pool."""
     async with request.app.state.db.acquire() as conn:
         yield conn
