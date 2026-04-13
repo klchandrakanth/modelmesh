@@ -22,9 +22,10 @@ from modelmesh.api.admin import logs as admin_logs_module
 from modelmesh.api.admin import models as admin_models_module
 from modelmesh.api.admin import health as admin_health_module
 from modelmesh.api.admin import keys as admin_keys_module
+from modelmesh.api.admin import auth_endpoints as admin_auth_module
+
 from modelmesh.db.connection import create_pool
 from modelmesh.db.schema import init_schema
-from modelmesh.api.admin import auth_endpoints as admin_auth_module
 
 logger = get_logger(__name__)
 
@@ -47,9 +48,20 @@ async def lifespan(app: FastAPI):
     configure_logging(settings.log_level)
 
     # Database
-    db_pool = await create_pool(settings.database_url)
-    await init_schema(db_pool, settings.models_config_path)
+    try:
+        db_pool = await create_pool(settings.database_url)
+    except Exception as exc:
+        logger.critical(
+            "DB pool creation failed — check DATABASE_URL",
+            extra={"error": str(exc)},
+        )
+        raise
     app.state.db = db_pool
+    try:
+        await init_schema(db_pool, settings.models_config_path)
+    except Exception:
+        await db_pool.close()
+        raise
 
     # Registry + providers
     registry = ModelRegistry(settings.models_config_path)
@@ -117,9 +129,9 @@ async def lifespan(app: FastAPI):
     yield
 
     # Cleanup
-    await db_pool.close()
     if cache is not None:
         await cache.close()
+    await db_pool.close()
     logger.info("shutdown")
 
 
@@ -140,7 +152,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_models_module.router)
     app.include_router(admin_health_module.router)
     app.include_router(admin_keys_module.router)
-    app.include_router(admin_auth_module.router)
+    app.include_router(admin_auth_module.router)  # auth endpoints resolve DB via app.state.db; no explicit wire needed
 
     # Embeddings router (optional)
     try:
