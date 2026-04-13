@@ -12,10 +12,19 @@ from modelmesh.providers.openai_provider import OpenAIProvider
 from modelmesh.providers.anthropic_provider import AnthropicProvider
 from modelmesh.router.rule_router import RuleRouter
 from modelmesh.auth.api_keys import ApiKeyManager, configure_auth
+from modelmesh.observability.request_log import RequestLog, set_request_log
 from modelmesh.api.v1 import chat as chat_module
 from modelmesh.api.v1 import models as models_module
 from modelmesh.api.v1.chat import router as chat_router
 from modelmesh.api.v1.models import router as models_router
+from modelmesh.api.admin import metrics as admin_metrics_module
+from modelmesh.api.admin import logs as admin_logs_module
+from modelmesh.api.admin import models as admin_models_module
+from modelmesh.api.admin import health as admin_health_module
+from modelmesh.api.admin import keys as admin_keys_module
+from modelmesh.db.connection import create_pool
+from modelmesh.db.schema import init_schema
+from modelmesh.api.admin import auth_endpoints as admin_auth_module
 
 logger = get_logger(__name__)
 
@@ -36,6 +45,11 @@ def _build_providers(s) -> dict:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_logging(settings.log_level)
+
+    # Database
+    db_pool = await create_pool(settings.database_url)
+    await init_schema(db_pool, settings.models_config_path)
+    app.state.db = db_pool
 
     # Registry + providers
     registry = ModelRegistry(settings.models_config_path)
@@ -79,10 +93,19 @@ async def lifespan(app: FastAPI):
         cache = RedisCache(url=settings.redis_url, ttl=settings.cache_ttl)
         await cache.connect()
 
+    # Request log
+    request_log = RequestLog()
+    set_request_log(request_log)
+
     # Wire API modules
     chat_module.set_router(active_router)
     chat_module.set_cache(cache)
     models_module.set_registry(registry)
+
+    # Wire admin modules
+    admin_models_module.set_registry(registry)
+    admin_models_module.set_router(rule_router)
+    admin_health_module.set_router(rule_router)
 
     # Wire embeddings if available
     try:
@@ -94,6 +117,7 @@ async def lifespan(app: FastAPI):
     yield
 
     # Cleanup
+    await db_pool.close()
     if cache is not None:
         await cache.close()
     logger.info("shutdown")
@@ -103,12 +127,20 @@ def create_app() -> FastAPI:
     app = FastAPI(title="ModelMesh", version="0.2.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3000"],
+        allow_origins=["http://localhost:3000", "http://localhost:5173"],
         allow_methods=["*"],
         allow_headers=["*"],
     )
     app.include_router(chat_router)
     app.include_router(models_router)
+
+    # Admin routers
+    app.include_router(admin_metrics_module.router)
+    app.include_router(admin_logs_module.router)
+    app.include_router(admin_models_module.router)
+    app.include_router(admin_health_module.router)
+    app.include_router(admin_keys_module.router)
+    app.include_router(admin_auth_module.router)
 
     # Embeddings router (optional)
     try:
